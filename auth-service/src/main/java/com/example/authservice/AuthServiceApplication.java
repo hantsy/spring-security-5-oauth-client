@@ -34,121 +34,146 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.security.crypto.factory.PasswordEncoderFactories;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 @SpringBootApplication
 public class AuthServiceApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(AuthServiceApplication.class, args);
-	}
+    public static void main(String[] args) {
+        SpringApplication.run(AuthServiceApplication.class, args);
+    }
+
+    @Bean
+    PasswordEncoder passwordEncoder() {
+        return PasswordEncoderFactories.createDelegatingPasswordEncoder();
+    }
 }
 
 @Controller
 class MainController {
 
-	@GetMapping("/")
-	String index() {
-		return "index";
-	}
+    @GetMapping("/")
+    String index() {
+        return "index";
+    }
 }
 
 @RestController
 class ProfileRestController {
 
-	@GetMapping("/resources/userinfo")
-	Map<String, String> profile(Principal principal) {
-		return Collections.singletonMap("name", principal.getName());
-	}
+    @GetMapping("/resources/userinfo")
+    Map<String, String> profile(Principal principal) {
+        return Collections.singletonMap("name", principal.getName());
+    }
 }
 
 @Configuration
 @EnableResourceServer
 class ResourceServerConfig extends ResourceServerConfigurerAdapter {
 
-	@Override
-	public void configure(HttpSecurity http) throws Exception {
-		http
-				.antMatcher("/resources/**")
-				.authorizeRequests()
-				.mvcMatchers("/resources/userinfo").access("#oauth2.hasScope('profile')");
-	}
+    @Override
+    public void configure(HttpSecurity http) throws Exception {
+        http
+            .antMatcher("/resources/**")
+            .authorizeRequests()
+            .mvcMatchers("/resources/userinfo").access("#oauth2.hasScope('profile')");
+    }
 }
 
 @Configuration
 @EnableAuthorizationServer
 class AuthorizationServerConfig extends AuthorizationServerConfigurerAdapter {
 
-	private final AuthenticationManager authenticationManager;
+    private final AuthenticationManager authenticationManager;
 
-	AuthorizationServerConfig(AuthenticationManager authenticationManager) {
-		this.authenticationManager = authenticationManager;
-	}
+    AuthorizationServerConfig(AuthenticationManager authenticationManager) {
+        this.authenticationManager = authenticationManager;
+    }
 
-	@Override
-	public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
-		//@formatter:off
-		clients
-			.inMemory()
-				.withClient("client-1234")
-				.secret("secret")
-				.authorizedGrantTypes("authorization_code")
-				.scopes("profile")
-				.redirectUris("http://localhost:8080/login/oauth2/code/login-client");
-		//@formatter:on
-	}
+    @Override
+    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+        //@formatter:off
+        clients
+            .inMemory()
+            .withClient("client-1234")
+            .secret("{noop}secret")
+            .authorizedGrantTypes("authorization_code")
+            .scopes("profile")
+            .redirectUris("http://localhost:8080/login/oauth2/code/login-client");
+        //@formatter:on
+    }
 
-	@Override
-	public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
-		endpoints
-				.tokenStore(this.tokenStore())
-				.accessTokenConverter(jwtAccessTokenConverter())
-				.authenticationManager(this.authenticationManager);
-	}
+    @Override
+    public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
+        endpoints
+            .tokenStore(this.tokenStore())
+            .accessTokenConverter(jwtAccessTokenConverter())
+            .authenticationManager(this.authenticationManager);
+    }
 
-	@Bean
-	JwtAccessTokenConverter jwtAccessTokenConverter() {
-		KeyStoreKeyFactory factory = new KeyStoreKeyFactory(new ClassPathResource(".keystore-oauth2-demo"),
-				"admin1234".toCharArray());
-		JwtAccessTokenConverter jwtAccessTokenConverter = new JwtAccessTokenConverter();
-		jwtAccessTokenConverter.setKeyPair(factory.getKeyPair("oauth2-demo-key"));
-		return jwtAccessTokenConverter;
-	}
+    @Bean
+    JwtAccessTokenConverter jwtAccessTokenConverter() {
+        KeyStoreKeyFactory factory = new KeyStoreKeyFactory(new ClassPathResource(".keystore-oauth2-demo"),
+            "admin1234".toCharArray());
+        JwtAccessTokenConverter jwtAccessTokenConverter = new JwtAccessTokenConverter();
+        jwtAccessTokenConverter.setKeyPair(factory.getKeyPair("oauth2-demo-key"));
+        return jwtAccessTokenConverter;
+    }
 
-	@Bean
-	TokenStore tokenStore() {
-		return new JwtTokenStore(this.jwtAccessTokenConverter());
-	}
+    @Bean
+    TokenStore tokenStore() {
+        return new JwtTokenStore(this.jwtAccessTokenConverter());
+    }
 }
 
 @Service
 class SimpleUserDetailsService implements UserDetailsService {
 
-	private final Map<String, UserDetails> users = new ConcurrentHashMap<>();
+    private final Map<String, UserDetails> users = new ConcurrentHashMap<>();
 
-	SimpleUserDetailsService() {
-		Arrays.asList("josh", "rob", "joe")
-				.forEach(username -> this.users.putIfAbsent(
-						username, new User(username, "pw", true, true, true, true, AuthorityUtils.createAuthorityList("USER"))));
-	}
+    SimpleUserDetailsService(PasswordEncoder encoder) {
+        Arrays.asList("josh", "rob", "joe")
+            .forEach(username -> this.users.putIfAbsent(
+            username,
+            User.withUsername(username)
+                .passwordEncoder(encoder::encode)
+                .password("pw")
+                .authorities("USER")
+                .accountExpired(false)
+                .accountLocked(false)
+                .credentialsExpired(false)
+                .disabled(false)
+                .build()
+            )
+        );
+    }
 
-	@Override
-	public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-		return this.users.get(username);
-	}
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        return this.users.get(username);
+    }
 }
 
 @Configuration
 @EnableWebSecurity
 class SecurityConfig extends WebSecurityConfigurerAdapter {
 
-	@Override
-	protected void configure(HttpSecurity http) throws Exception {
-		//@formatter:off
-		http
-				.authorizeRequests()
-					.anyRequest().authenticated()
-					.and()
-				.formLogin();
-		//@formatter:on
-	}
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        //@formatter:off
+        http
+            .authorizeRequests()
+            .anyRequest().authenticated()
+            .and()
+            .formLogin();
+        //@formatter:on
+    }
+
+    @Override
+    @Bean
+    public AuthenticationManager authenticationManagerBean() throws Exception {
+        return super.authenticationManagerBean(); //To change body of generated methods, choose Tools | Templates.
+    }
+
 }

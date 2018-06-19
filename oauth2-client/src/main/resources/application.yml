@@ -14,7 +14,7 @@ spring:
             redirect-uri-template : "{baseUrl}/login/oauth2/code/{registrationId}"
         provider:
           local-authz :
-            authorization-uri: http://auth-server:8090/oauth/authorize
-            token-uri: http://auth-server:8090/oauth/token
-            user-info-uri : http://auth-server:8090/resources/userinfo
+            authorization-uri: http://localhost:8090/oauth/authorize
+            token-uri: http://localhost:8090/oauth/token
+            user-info-uri : http://localhost:8090/resources/userinfo
             user-name-attribute : name
